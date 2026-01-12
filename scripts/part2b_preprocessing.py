@@ -1,87 +1,103 @@
+# Part 2b: Data Preprocessing for Hand Pose Features
+# This script loads feature CSV files, cleans the data (removes duplicates, missing values, and outliers),
+# scales numeric features, and saves cleaned individual and combined datasets.
+
 import pandas as pd
 import numpy as np
 from scipy import stats
 from sklearn.preprocessing import StandardScaler
 import os
 
-# Ensure outputs folder exists
+# Create output folder if it doesn't exist
 os.makedirs("outputs", exist_ok=True)
 
-# Feature files
-files = [
+# List of raw feature CSV files to process
+feature_files = [
     "data/features_F.csv",
     "data/features_G.csv",
     "data/features_H.csv"
 ]
 
-def preprocess_features(file_path):
+def preprocess_file(file_path):
+    """
+    Load and clean a single feature CSV file:
+    - Remove duplicates
+    - Remove rows with missing values
+    - Remove outliers using Z-score (threshold = 3)
+    - Scale numeric features
+    Returns a cleaned pandas DataFrame or None if file is empty/invalid.
+    """
     print(f"\nProcessing {file_path}...")
 
     # Check if file exists
     if not os.path.exists(file_path):
-        print(f"⚠️ File not found: {file_path}. Skipping.")
+        print(f"⚠️ File not found: {file_path}")
         return None
 
-    data = pd.read_csv(file_path)
-    print("Initial shape:", data.shape)
+    # Load data
+    df = pd.read_csv(file_path)
+    print("Original shape:", df.shape)
 
-    # Remove duplicate rows
-    data = data.drop_duplicates()
+    # Remove duplicates
+    df = df.drop_duplicates()
 
-    # Remove rows with missing values
-    data = data.dropna()
+    # Drop rows with missing values
+    df = df.dropna()
 
-    # Identify numeric columns only
-    numeric_cols = data.select_dtypes(include=[np.number]).columns
+    # Only keep numeric columns for scaling
+    numeric_cols = df.select_dtypes(include=[np.number]).columns
     if len(numeric_cols) == 0:
-        print("No numeric columns found. Skipping file.")
+        print("No numeric columns found. Skipping this file.")
         return None
 
-    # Remove outliers using Z-score (numeric features only)
-    z_scores = np.abs(stats.zscore(data[numeric_cols]))
-    data = data[(z_scores < 3).all(axis=1)]
+    # Remove outliers using Z-score
+    z_scores = np.abs(stats.zscore(df[numeric_cols]))
+    df = df[(z_scores < 3).all(axis=1)]
 
-    if data.empty:
-        print("No data left after cleaning. Skipping file.")
+    if df.empty:
+        print("No data left after cleaning. Skipping this file.")
         return None
 
-    print("Shape after cleaning:", data.shape)
+    print("Shape after cleaning:", df.shape)
 
-    # Separate label if present
-    y = data["ASL_sign"] if "ASL_sign" in data.columns else None
-
-    # Keep numeric features only for scaling
-    X = data[numeric_cols]
+    # Keep label column if it exists
+    y = df["ASL_sign"] if "ASL_sign" in df.columns else None
 
     # Scale numeric features
     scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X)
+    X_scaled = scaler.fit_transform(df[numeric_cols])
 
+    # Create cleaned DataFrame
     cleaned = pd.DataFrame(X_scaled, columns=numeric_cols)
 
-    # Reattach label (not scaled)
+    # Add label column back
     if y is not None:
         cleaned["ASL_sign"] = y.values
 
     return cleaned
 
-# Process each file
-cleaned_dfs = []
+# List to store all cleaned DataFrames
+cleaned_dataframes = []
 
-for file in files:
-    cleaned_df = preprocess_features(file)
-    if cleaned_df is not None and not cleaned_df.empty:
-        out_name = f"outputs/cleaned_{os.path.basename(file)}"
-        cleaned_df.to_csv(out_name, index=False)
-        print(f"Saved: {out_name}")
-        cleaned_dfs.append(cleaned_df)
+# Process each feature file
+for file in feature_files:
+    cleaned_df = preprocess_file(file)
+    if cleaned_df is not None:
+        # Save individual cleaned file
+        output_path = f"outputs/cleaned_{os.path.basename(file)}"
+        cleaned_df.to_csv(output_path, index=False)
+        print(f"Saved cleaned file: {output_path}")
+
+        # Add to list for combining
+        cleaned_dataframes.append(cleaned_df)
     else:
-        print(f"Skipping saving for {file} (no valid data).")
+        print(f"Skipped file: {file}")
 
-# Combine all cleaned data if there is anything
-if cleaned_dfs:
-    combined = pd.concat(cleaned_dfs, ignore_index=True)
-    combined.to_csv("outputs/cleaned_features_all.csv", index=False)
-    print("\nAll preprocessing complete. Combined CSV saved.")
+# Combine all cleaned data into a single CSV
+if cleaned_dataframes:
+    combined_df = pd.concat(cleaned_dataframes, ignore_index=True)
+    combined_df.to_csv("outputs/cleaned_features_all.csv", index=False)
+    print("\nAll files processed and combined successfully!")
+    print("Combined CSV saved as: outputs/cleaned_features_all.csv")
 else:
-    print("\nNo data to combine. Nothing saved in combined CSV.")
+    print("\nNo valid data processed. Combined CSV not created.")
