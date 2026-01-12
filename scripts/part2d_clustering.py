@@ -1,12 +1,9 @@
 import pandas as pd
 from sklearn.cluster import KMeans, AgglomerativeClustering
-from sklearn.metrics import (
-    adjusted_rand_score,
-    normalized_mutual_info_score,
-    silhouette_score
-)
+from sklearn.metrics import silhouette_score
 
-INPUT_FILE = "outputs/cleaned_features_F.csv"
+INPUT_FILE = "outputs/cleaned_features_all.csv"
+
 
 def run_clustering():
     print(f"Loading {INPUT_FILE}")
@@ -15,62 +12,37 @@ def run_clustering():
     print("Columns found:")
     print(df.columns.tolist())
 
-    # Detect label column automatically
-    possible_label_cols = ["label", "class", "asl_sign", "sign", "gesture"]
+    # Use all numeric features
+    X = df.select_dtypes(include="number")
 
-    label_col = None
-    for col in possible_label_cols:
-        if col in df.columns:
-            label_col = col
-            break
-
-    if label_col is None:
-        raise ValueError(
-            "No label column found. Columns are: "
-            + ", ".join(df.columns)
-        )
-
-    print(f"Using label column: {label_col}")
-
-    # Separate
-    y_true = df[label_col]
-    X = df.drop(columns=[label_col])
-
-    # Keep numeric only (CRITICAL)
-    X = X.select_dtypes(include="number")
-
-    n_clusters = y_true.nunique()
+    # Choose number of clusters (F, G, H = 3)
+    n_clusters = 3
     print(f"Number of clusters: {n_clusters}")
 
-    # KMeans
-    kmeans = KMeans(n_clusters=n_clusters, random_state=42)
+    # ---------- KMEANS ----------
+    kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
     kmeans_labels = kmeans.fit_predict(X)
+    kmeans_silhouette = silhouette_score(X, kmeans_labels)
 
-    # Hierarchical
+    # ---------- HIERARCHICAL ----------
     hierarchical = AgglomerativeClustering(n_clusters=n_clusters)
     hier_labels = hierarchical.fit_predict(X)
+    hier_silhouette = silhouette_score(X, hier_labels)
 
-    # Metrics
+    # ---------- RESULTS TABLE ----------
     results = pd.DataFrame({
         "Method": ["KMeans", "Hierarchical"],
-        "ARI": [
-            adjusted_rand_score(y_true, kmeans_labels),
-            adjusted_rand_score(y_true, hier_labels)
-        ],
-        "NMI": [
-            normalized_mutual_info_score(y_true, kmeans_labels),
-            normalized_mutual_info_score(y_true, hier_labels)
-        ],
-        "Silhouette": [
-            silhouette_score(X, kmeans_labels),
-            silhouette_score(X, hier_labels)
+        "Silhouette Score": [
+            kmeans_silhouette,
+            hier_silhouette
         ]
-    })
+    }).round(4)
 
     results.to_csv("outputs/part2d_clustering_results.csv", index=False)
 
-    print("\n=== Clustering Results ===")
-    print(results)
+    print("\n=== Part 2d: Clustering Results ===")
+    print(results.to_string(index=False))
+
 
 if __name__ == "__main__":
     run_clustering()
